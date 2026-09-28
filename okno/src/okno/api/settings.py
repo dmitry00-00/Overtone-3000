@@ -22,7 +22,8 @@ def _dsn() -> str:
 @dataclass(frozen=True)
 class Settings:
     dsn: str = field(default_factory=_dsn)
-    bot_token: str | None = field(default_factory=lambda: _env("OKNO_BOT_TOKEN") or None)
+    # BotHost и подобные хостинги кладут токен в BOT_TOKEN — понимаем оба имени.
+    bot_token: str | None = field(default_factory=lambda: _env("OKNO_BOT_TOKEN") or _env("BOT_TOKEN") or None)
     dev_auth: bool = field(default_factory=lambda: _env("OKNO_DEV_AUTH") == "1")
     tick_interval_s: float = field(default_factory=lambda: float(_env("OKNO_TICK_INTERVAL", "30")))
     initdata_max_age_s: int = field(default_factory=lambda: int(_env("OKNO_INITDATA_MAX_AGE", "86400")))

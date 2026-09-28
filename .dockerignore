@@ -1,0 +1,9 @@
+.git
+**/.venv
+**/node_modules
+okno/webapp/dist
+**/__pycache__
+**/.pytest_cache
+**/.env
+*.tar.gz
+*.pdf
