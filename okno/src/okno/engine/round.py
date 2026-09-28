@@ -14,6 +14,7 @@ from typing import Callable
 
 from .types import (
     AporiaReason,
+    VerdictVote,
     Challenge,
     Config,
     Deal,
@@ -36,6 +37,7 @@ class RoundContext:
 
     config: Config
     active_teams: frozenset[Team]
+    human_teams: frozenset[Team]  # команды с активными людьми: только они голосуют и судят себя
     judge_active: bool
     journalist_active: bool
     legal_moves: Callable[[Team], tuple[Move, ...]]
@@ -65,6 +67,7 @@ class Round:
     responses: dict[Team, Response] = field(default_factory=dict)
     challenges: dict[Team, Challenge] = field(default_factory=dict)
     verdict: Verdict | None = None
+    votes: dict[Team, VerdictVote] = field(default_factory=dict)  # взаимный вердикт (judging="mutual")
     marks: dict[Team, Marks] = field(default_factory=dict)
     claim_texts: dict[Team, str] = field(default_factory=dict)  # черновики до закрытия LEDGER
     claim_rejections: dict[Team, int] = field(default_factory=dict)
@@ -117,7 +120,15 @@ class Round:
                 acted = set(self.responses) | set(self.challenges)
                 return {t.value for t in teams - acted}
             case Phase.VERDICT:
-                return {"judge"} if ctx.judge_active and self.verdict is None else set()
+                if self.verdict is not None:
+                    return set()
+                match ctx.config.judging:
+                    case "mutual":
+                        return {t.value for t in ctx.human_teams - set(self.votes)}
+                    case "self":
+                        return {t.value for t in ctx.human_teams}
+                    case _:
+                        return {"judge"} if ctx.judge_active else set()
             case Phase.LEDGER:
                 waiting = {t.value for t in (teams & self.teams_with_statements()) - set(self.claim_texts)}
                 if self.move_required(ctx) and self.move_choice is None:
@@ -158,13 +169,15 @@ class Round:
                     return Phase.LEDGER
                 return Phase.RESPONSE
             case Phase.RESPONSE:
-                if not ctx.judge_active:
+                if ctx.config.judging == "judge" and not ctx.judge_active:
                     self.verdict = Verdict(None, True, AporiaReason.NO_VERDICT, None, now)
                     return Phase.LEDGER
                 return Phase.VERDICT
             case Phase.VERDICT:
+                if self.verdict is None and ctx.config.judging == "mutual":
+                    self._resolve_votes(ctx, now)
                 if self.verdict is None:
-                    # Судья не вынес вердикт: апория, отметки за раунд не ставятся.
+                    # Вердикт не вынесен в срок: апория, отметки за раунд не ставятся.
                     self.verdict = Verdict(None, True, AporiaReason.NO_VERDICT, None, now)
                     self.marks.clear()
                 return Phase.LEDGER
@@ -270,6 +283,56 @@ class Round:
         if move not in ctx.legal_moves(team):
             raise IllegalAction(f"ход {move} недоступен")
         self.move_choice = move
+
+    # ----- взаимный вердикт (judging="mutual") -----
+
+    def submit_vote(
+        self,
+        ctx: RoundContext,
+        team: Team,
+        winner: Team | None,
+        opponent_marks: dict[MarkCode, bool],
+        now: datetime,
+        challenge_concede: bool | None = None,
+    ) -> None:
+        self._require_phase(Phase.VERDICT)
+        if ctx.config.judging != "mutual":
+            raise IllegalAction("голосование есть только при взаимном вердикте")
+        self._require_active_team(ctx, team)
+        if team in self.votes:
+            raise IllegalAction("голос уже сдан")
+        if set(opponent_marks) != set(MarkCode):
+            raise IllegalAction("нужны все пять отметок карточки соперника")
+        if team.other in self.challenges and challenge_concede is None:
+            raise IllegalAction("вам предъявлен вызов: признайте или отклоните противоречие")
+        self.votes[team] = VerdictVote(team, winner, dict(opponent_marks), now, challenge_concede)
+
+    def _resolve_votes(self, ctx: RoundContext, now: datetime) -> None:
+        """Свести голоса. Вызов решает ответчик; иначе совпавший победитель — вердикт,
+        разошедшиеся голоса — апория несогласия. Неполные голоса оставляют verdict пустым."""
+        if set(self.votes) != set(ctx.human_teams) or not self.votes:
+            return
+        for team, ch in self.challenges.items():
+            answer = self.votes.get(team.other)
+            if answer is not None and answer.challenge_concede is not None:
+                ch.upheld = answer.challenge_concede
+                ch.ruled_at = now
+        if any(ch.upheld is not None for ch in self.challenges.values()):
+            self.verdict = Verdict(None, False, None, None, now)
+        else:
+            winners = {v.winner for v in self.votes.values()}
+            if len(winners) == 1:
+                w = winners.pop()
+                if w is None:
+                    self.verdict = Verdict(None, True, AporiaReason.JUDGE_RULED_NOBODY, None, now)
+                else:
+                    self.verdict = Verdict(w, False, None, None, now)
+            else:
+                self.verdict = Verdict(None, True, AporiaReason.NO_CONSENSUS, None, now)
+        # отметки — peer-наблюдения: голос команды отмечает карточку соперника
+        for team, vote in self.votes.items():
+            if team.other in self.statements:
+                self.marks[team.other] = Marks(team.other, dict(vote.opponent_marks), f"peer:{team.value}")
 
     # ----- действия судьи -----
 

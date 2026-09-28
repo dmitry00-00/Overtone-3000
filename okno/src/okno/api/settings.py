@@ -29,6 +29,9 @@ class Settings:
     webapp_url: str | None = field(default_factory=lambda: _env("OKNO_WEBAPP_URL") or None)  # https-адрес Mini App
     app_short_name: str | None = field(default_factory=lambda: _env("OKNO_APP_SHORT_NAME") or None)  # из /newapp
     run_bot: bool = field(default_factory=lambda: _env("OKNO_RUN_BOT", "1") == "1")
+    llm_url: str | None = field(default_factory=lambda: _env("OKNO_LLM_URL") or None)  # OpenAI-совместимый, напр. http://127.0.0.1:1234/v1
+    llm_model: str = field(default_factory=lambda: _env("OKNO_LLM_MODEL", "local"))
+    bot_username: str = field(default_factory=lambda: _env("OKNO_BOT_USERNAME", "Overtone_3000_bot"))
 
     def __post_init__(self) -> None:
         if not self.bot_token and not self.dev_auth:

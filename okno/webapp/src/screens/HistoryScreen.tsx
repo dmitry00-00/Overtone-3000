@@ -7,7 +7,7 @@ export function verdictLine(r: RoundView): string {
   const v = r.verdict;
   if (!v) return "без вердикта";
   if (v.is_aporia) {
-    return { no_statements: "апория: выступлений не было", no_verdict: "апория: судья не вынес вердикт", judge_ruled_nobody: "не убедил никто — окно не двинулось", technical: "партия прервана" }[v.aporia_reason ?? ""] ?? "апория";
+    return { no_statements: "апория: выступлений не было", no_verdict: "апория: судья не вынес вердикт", judge_ruled_nobody: "не убедил никто — окно не двинулось", no_consensus: "вердикты разошлись — окно не двинулось", technical: "партия прервана" }[v.aporia_reason ?? ""] ?? "апория";
   }
   if (v.winner === null) return "исход определён вызовом";
   return `убедила ${TEAM_LABEL[v.winner]}` + (v.by_forfeit ? " — соперник не выступил" : "") + (v.move ? ` · ${v.move === "advance" ? "шаг себе" : "откат сопернику"}` : "");

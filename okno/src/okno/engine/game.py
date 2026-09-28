@@ -130,13 +130,28 @@ class Game:
 
     # ------------------------------------------------------------------ старт
 
+    def human_teams(self) -> frozenset[Team]:
+        return frozenset(
+            t for t in Team if any(p.active and not p.is_ai and p.role.team is t for p in self.players.values())
+        )
+
+    def seat_ai(self, team: Team) -> None:
+        """Посадить ИИ-соперника на команду (соло). ИИ не судит и не участвует в разборе."""
+        if self.status is not GameStatus.LOBBY:
+            raise IllegalAction("ИИ сажается до старта")
+        if self.active_players(team):
+            raise IllegalAction(f"в {team} уже есть игроки")
+        self.players[f"ai:{team.value}"] = Player(f"ai:{team.value}", Role(team.value), "Соперник (ИИ)")
+
     def start(self, now: datetime) -> None:
         if self.status is not GameStatus.LOBBY:
             raise IllegalAction("партия уже начата")
         for team in Team:
             if not self.active_players(team):
                 raise IllegalAction(f"в {team} нет игроков")
-        if self._role_holder(Role.JUDGE) is None:
+        if not self.human_teams():
+            raise IllegalAction("в партии нет людей")
+        if self.config.judging == "judge" and self._role_holder(Role.JUDGE) is None:
             raise IllegalAction("нет судьи")
         self.created_at = now
         if not self.projects:
@@ -175,6 +190,7 @@ class Game:
         return RoundContext(
             config=self.config,
             active_teams=frozenset(t for t in Team if self.active_players(t)),
+            human_teams=self.human_teams(),
             judge_active=self._role_holder(Role.JUDGE) is not None,
             journalist_active=self._role_holder(Role.JOURNALIST) is not None,
             legal_moves=self.track.legal_moves,
@@ -358,8 +374,28 @@ class Game:
         challenge_rulings: dict[Team, bool] | None = None,
         fill_seconds: float | None = None,
     ) -> None:
-        self._require_judge(judge_id)
+        if self.config.judging == "self":
+            p = self._player(judge_id)
+            if not p.active or p.is_ai or p.role.team is None:
+                raise IllegalAction("самосуд выносит активный игрок команды")
+        elif self.config.judging == "mutual":
+            raise IllegalAction("в дуэли вердикт взаимный: сдайте голос")
+        else:
+            self._require_judge(judge_id)
         self.round.rule(self._ctx(), judge_id, now, winner, marks, challenge_rulings, fill_seconds)
+        self._advance(now)
+
+    def submit_vote(
+        self,
+        player_id: str,
+        team: Team,
+        winner: Team | None,
+        opponent_marks: dict[MarkCode, bool],
+        now: datetime,
+        challenge_concede: bool | None = None,
+    ) -> None:
+        self._require_team_member(player_id, team)
+        self.round.submit_vote(self._ctx(), team, winner, opponent_marks, now, challenge_concede)
         self._advance(now)
 
     def reject_claim(self, judge_id: str, team: Team, now: datetime) -> None:
@@ -425,15 +461,20 @@ class Game:
         self._check_debrief_complete(now)
 
     def _check_debrief_complete(self, now: datetime) -> None:
-        active = self.active_players()
+        active = [p for p in self.active_players() if not p.is_ai]
         if active and all(p.id in self.debrief_notes for p in active):
             self.debrief_completed_at = now
             self.status = GameStatus.COMPLETED
 
     @property
     def export_allowed(self) -> bool:
-        """Партия отдаёт данные в профиль только после завершённого разбора."""
-        return self.status is GameStatus.COMPLETED and self.debrief_completed_at is not None
+        """Данные в профиль отдаёт только партия с судьёй и завершённым разбором.
+        Соло и дуэль — тренировочные режимы: их отметки не измерение."""
+        return (
+            self.config.judging == "judge"
+            and self.status is GameStatus.COMPLETED
+            and self.debrief_completed_at is not None
+        )
 
     def track_replay(self) -> list[tuple]:
         """Проигрыш трека: каждый сдвиг и выступление, которое его вызвало."""

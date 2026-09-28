@@ -37,6 +37,8 @@ class OknoBot:
         self.username: str | None = None
         self.dp.message.register(self.on_start, CommandStart())
         self.dp.message.register(self.on_new, Command("new"))
+        self.dp.message.register(self.on_solo, Command("solo"))
+        self.dp.message.register(self.on_duel, Command("duel"))
         self.dp.message.register(self.on_game, Command("game"))
         self.dp.message.register(self.on_bind, Command("bind"))
 
@@ -93,6 +95,28 @@ class OknoBot:
         else:
             text += "\nОткройте бота в личке и нажмите «Открыть «Окно»»."
         await m.answer(text)
+
+    async def _create_private(self, m: Message, mode: str, intro: str) -> None:
+        ident = self._identity(m)
+        game = await asyncio.to_thread(self.service.create, ident, Role.TEAM_A, None, mode)
+        if m.chat.type == "private":
+            await asyncio.to_thread(self.service.bind_chat, game.id, m.chat.id)
+        link = self.game_link(game.id)
+        await m.answer(f"{intro}\nПартия {game.id}." + (f"\n{link}" if link else ""), reply_markup=self.open_keyboard(game.id))
+
+    async def on_solo(self, m: Message) -> None:
+        await self._create_private(
+            m, "solo",
+            "Одиночная партия: вы ведёте проект против ИИ-соперника и сами судите обмены. "
+            "Друг может присоединиться в вашу команду по ссылке из лобби.",
+        )
+
+    async def on_duel(self, m: Message) -> None:
+        await self._create_private(
+            m, "duel",
+            "Дуэль: судьи нет, после каждого обмена оба выносят вердикт — согласие двигает окно. "
+            "Пришлите сопернику ссылку-приглашение из лобби.",
+        )
 
     async def on_game(self, m: Message) -> None:
         games = await asyncio.to_thread(self.service.games_in_chat, m.chat.id)
@@ -153,7 +177,9 @@ class OknoBot:
                     menu_button=MenuButtonWebApp(text="Окно", web_app=WebAppInfo(url=self.webapp_url))
                 )
             await self.bot.set_my_commands([
-                BotCommand(command="new", description="создать партию в этом чате"),
+                BotCommand(command="solo", description="одиночная: против ИИ"),
+                BotCommand(command="duel", description="дуэль с другом"),
+                BotCommand(command="new", description="групповая партия в этом чате"),
                 BotCommand(command="game", description="текущая партия чата"),
                 BotCommand(command="bind", description="привязать партию к чату"),
             ])

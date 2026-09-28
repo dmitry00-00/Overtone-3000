@@ -86,6 +86,7 @@ class AporiaReason(StrEnum):
     NO_STATEMENTS = "no_statements"  # обе команды не сдали выступление
     NO_VERDICT = "no_verdict"  # судья не вынес вердикт
     JUDGE_RULED_NOBODY = "judge_ruled_nobody"  # судья сказал «не убедил никто»
+    NO_CONSENSUS = "no_consensus"  # взаимный вердикт: команды не сошлись, окно не двинулось
     TECHNICAL = "technical"  # у команды не осталось активных игроков
     TIE = "tie"  # партия закончилась ничем
 
@@ -120,6 +121,10 @@ class Config:
     debrief_window: timedelta = timedelta(days=7)
     end_on_norm: bool = True  # партия завершается досрочно, если фишка дошла до 5
     scoring: str = "delta"  # кто провёл проект дальше: "delta" — от старта, "absolute" — по позиции
+    # Кто выносит вердикт. "judge" — классика с судьёй (только она отдаёт данные в профиль);
+    # "self" — соло-тренировка: игрок судит свой обмен сам; "mutual" — дуэль без судьи:
+    # обе команды голосуют, согласие даёт вердикт, несогласие — апорию.
+    judging: str = "judge"
     claim_max_words: int = 15
     track_size: int = 6  # позиции 0..5
 
@@ -141,6 +146,11 @@ class Player:
     @property
     def active(self) -> bool:
         return self.dropped_at is None
+
+    @property
+    def is_ai(self) -> bool:
+        """ИИ-место (соперник в соло). Не судит, не участвует в разборе."""
+        return self.id.startswith("ai:")
 
 
 @dataclass(frozen=True)
@@ -189,6 +199,17 @@ class Verdict:
     by_forfeit: bool = False
     fill_seconds: float | None = None
     move: Move | None = None  # выбор победителя; заполняется в LEDGER
+
+
+@dataclass
+class VerdictVote:
+    """Голос команды во взаимном вердикте: кто убедил и отметки карточки соперника."""
+
+    team: Team
+    winner: Team | None  # None — «не убедил никто»
+    opponent_marks: dict[MarkCode, bool]
+    submitted_at: datetime
+    challenge_concede: bool | None = None  # ответ на вызов соперника: признать противоречие
 
 
 @dataclass

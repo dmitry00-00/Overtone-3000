@@ -32,6 +32,7 @@ export interface RoundView {
   verdict: { winner: Team | null; is_aporia: boolean; aporia_reason: string | null; by_forfeit: boolean; move: string | null; ruled_at: string } | null;
   marks: Partial<Record<Team, Record<MarkCode, boolean>>>;
   claim_drafts: Partial<Record<Team, string>>;
+  votes: { mine?: { winner: Team | null; opponent_marks: Record<MarkCode, boolean>; challenge_concede: boolean | null }; opponent_submitted?: boolean };
   claim_rejections: Partial<Record<Team, number>>;
   move_choice: string | null;
   summary: { headline: string; body: string; author: string; published_at: string } | null;
@@ -50,11 +51,12 @@ export interface GameView {
   prompt: Prompt;
   game: {
     id: string; status: "lobby" | "in_progress" | "debrief" | "completed" | "uncounted";
+    judging: "judge" | "self" | "mutual";
     created_at: string | null; rounds_total: number; rounds_played: number; technical_aporia_from: number | null;
     outcome: { winner: Team | null; is_aporia: boolean; aporia_reason: string | null; positions: Record<Team, number>; deltas: Record<Team, number> } | null;
   };
   me: { player_id: string; role: Role | null; team: Team | null; display_name: string | null };
-  players: { id: string; display_name: string; role: Role; team: Team | null; active: boolean }[];
+  players: { id: string; display_name: string; role: Role; team: Team | null; active: boolean; is_ai: boolean }[];
   projects: Partial<Record<Team, Project>>;
   track: { size: number; positions: Record<Team, number>; start: Record<Team, number>; streak: Record<Team, number>; events: TrackEvent[] };
   round: RoundView | null;
@@ -70,7 +72,7 @@ export interface GameView {
   } | null;
 }
 
-export interface Me { player_id: string; display_name: string; games: { id: string; status: string; role: Role; updated_at: string; round_index: number | null; phase: Phase | null }[] }
+export interface Me { player_id: string; display_name: string; bot_username?: string; games: { id: string; status: string; role: Role; updated_at: string; round_index: number | null; phase: Phase | null }[] }
 
 export const TRACK_LABELS = ["немыслимо", "радикально", "приемлемо", "разумно", "популярно", "норма"];
 export const TEAM_LABEL: Record<Team, string> = { team_a: "команда А", team_b: "команда Б" };

@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { api } from "../api";
 import type { Ctx } from "../App";
 import { Button, ErrorLine, fmtDeadline, Label, Panel, Remaining, Section } from "../components/ui";
-import { MARK_LABEL, MARKS, TEAM_LABEL, type MarkCode, type Team } from "../types";
+import { MARK_LABEL, MARKS, other, TEAM_LABEL, type MarkCode, type Team } from "../types";
 
 type MarkSet = Record<MarkCode, boolean>;
 const empty = (): MarkSet => ({ opora: false, steelman: false, level: false, ledger: false, condition: false });
@@ -16,7 +16,10 @@ export function JudgeScreen({ ctx }: { ctx: Ctx }) {
   const [tab, setTab] = useState<Team>("team_a");
   const [marks, setMarks] = useState<Record<Team, MarkSet>>({ team_a: empty(), team_b: empty() });
   const [rulings, setRulings] = useState<Partial<Record<Team, boolean>>>({});
-  if (!r || view.me.role !== "judge") return <div className="muted">Кабинет судьи.</div>;
+  const judging = view.game.judging;
+  const selfJudge = judging === "self" && view.me.team !== null;
+  if (judging === "mutual" && view.me.team !== null) return <MutualVote ctx={ctx} />;
+  if (!r || (view.me.role !== "judge" && !selfJudge)) return <div className="muted">Кабинет судьи.</div>;
 
   const teams: Team[] = ["team_a", "team_b"];
   const withStatement = teams.filter((t) => r.statements[t]);
@@ -37,6 +40,9 @@ export function JudgeScreen({ ctx }: { ctx: Ctx }) {
   const s = r.statements[tab];
   const resp = r.responses[tab];
 
+  if (r.phase === "ledger" && selfJudge) {
+    return <Panel><Label>Реестр</Label><div className="h2">{view.prompt.text}</div></Panel>;
+  }
   if (r.phase === "ledger") {
     return (
       <>
@@ -64,7 +70,8 @@ export function JudgeScreen({ ctx }: { ctx: Ctx }) {
   return (
     <>
       <Panel accent>
-        <Label accent>Кабинет судьи · раунд {r.index}</Label>
+        <Label accent>{selfJudge ? "Самосуд" : "Кабинет судьи"} · раунд {r.index}</Label>
+        {selfJudge && <div className="muted small">Тренировка: судите свой обмен так, как судила бы публика, — не как игрок.</div>}
         {r.audience && (
           <>
             <div className="h1">Публика: {r.audience.mood?.toLowerCase()}</div>
@@ -75,7 +82,7 @@ export function JudgeScreen({ ctx }: { ctx: Ctx }) {
       </Panel>
 
       <div className="tabs">
-        {teams.map((t) => <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{TEAM_LABEL[t]}{MARKS.some((m) => marks[t][m]) ? " ·" : ""}</button>)}
+        {teams.map((t) => <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{selfJudge ? (t === view.me.team ? "мы" : "соперник") : TEAM_LABEL[t]}{MARKS.some((m) => marks[t][m]) ? " ·" : ""}</button>)}
       </div>
 
       <Section>
@@ -115,8 +122,8 @@ export function JudgeScreen({ ctx }: { ctx: Ctx }) {
         {challenges.length === 0 ? (
           <>
             <div className="btn-row">
-              <Button primary disabled={!r.statements.team_a} onClick={() => rule("team_a")}>Убедила А</Button>
-              <Button primary disabled={!r.statements.team_b} onClick={() => rule("team_b")}>Убедила Б</Button>
+              <Button primary disabled={!r.statements.team_a} onClick={() => rule("team_a")}>{selfJudge ? (view.me.team === "team_a" ? "Убедили мы" : "Убедил соперник") : "Убедила А"}</Button>
+              <Button primary disabled={!r.statements.team_b} onClick={() => rule("team_b")}>{selfJudge ? (view.me.team === "team_b" ? "Убедили мы" : "Убедил соперник") : "Убедила Б"}</Button>
             </div>
             <div style={{ marginTop: 8 }}><Button onClick={() => rule(null)}>Не убедил никто — окно не двинулось</Button></div>
           </>
@@ -124,6 +131,115 @@ export function JudgeScreen({ ctx }: { ctx: Ctx }) {
           <Button primary disabled={!allRuled} onClick={() => rule(null)}>Вынести вердикт по вызову</Button>
         )}
       </Section>
+      <ErrorLine error={error} />
+    </>
+  );
+}
+
+
+/** Дуэль: взаимный вердикт. Отмечаешь карточку соперника и говоришь, кто убедил. */
+function MutualVote({ ctx }: { ctx: Ctx }) {
+  const { view, act, error, back } = ctx;
+  const r = view.round;
+  const id = view.game.id;
+  const me = view.me.team!;
+  const opp = other(me);
+  const [marks, setMarks] = useState<MarkSet>(empty());
+  const [winner, setWinner] = useState<Team | null | undefined>(undefined);
+  const [concede, setConcede] = useState<boolean | undefined>(undefined);
+  if (!r) return null;
+
+  const myChallenge = r.challenges[me];
+  const theirChallenge = r.challenges[opp]; // вызов, предъявленный нам
+  const submitted = !!r.votes.mine;
+  const anyChallenge = !!myChallenge || !!theirChallenge;
+  const ready = submitted ? false : (anyChallenge || winner !== undefined) && (!theirChallenge || concede !== undefined);
+
+  const submit = async () => {
+    const payload = {
+      winner: anyChallenge ? null : winner ?? null,
+      opponent_marks: marks,
+      challenge_concede: theirChallenge ? concede : null,
+    };
+    if (await act(() => api.vote(id, payload))) back();
+  };
+
+  if (r.phase !== "verdict") {
+    return <Panel><Label>Взаимный вердикт</Label><div className="h2">{view.prompt.text}</div></Panel>;
+  }
+
+  return (
+    <>
+      <Panel accent>
+        <Label accent>Взаимный вердикт · раунд {r.index}</Label>
+        <div className="h1">Оцените обмен честно — соперник делает то же самое</div>
+        <div className="muted small">Совпавший вердикт двигает окно. Несогласие — апория: не двигается никто.</div>
+        {r.deadline && <div className="muted small">Окно закрывается {fmtDeadline(r.deadline)}. <Remaining iso={r.deadline} /></div>}
+      </Panel>
+
+      {r.audience && (
+        <Section>
+          <Label>Публика раунда · {r.audience.code}</Label>
+          <div className="h2">{r.audience.mood}</div>
+          <div className="muted small">Заходит: {r.audience.accepts}. Отторгается: {r.audience.rejects}. Судите так, как судила бы она.</div>
+        </Section>
+      )}
+
+      <Section>
+        <Label>Выступление соперника</Label>
+        {r.statements[opp] ? <div className="record">{r.statements[opp]!.body}</div> : <div className="meta">не сдано</div>}
+        {r.responses[opp] && <><div className="spacer" /><div className="record muted">Реплика: {r.responses[opp]!.body}</div></>}
+      </Section>
+
+      {submitted ? (
+        <Section>
+          <Label>Ваш голос сдан</Label>
+          <div className="meta">{r.votes.opponent_submitted ? "сводим вердикты" : "ждём голос соперника"}</div>
+        </Section>
+      ) : (
+        <>
+          <Section>
+            <Label>Отметки карточки соперника</Label>
+            <ul className="marks">
+              {MARKS.map((m) => (
+                <li key={m} className={marks[m] ? "on" : ""} onClick={() => setMarks((s) => ({ ...s, [m]: !s[m] }))}>
+                  <span className="box">{marks[m] ? "✓" : ""}</span><span>{MARK_LABEL[m]}</span>
+                </li>
+              ))}
+            </ul>
+          </Section>
+
+          {theirChallenge && (
+            <Section>
+              <Label>Вам предъявлен вызов · заявления №{theirChallenge.claim_numbers.join(", №")}</Label>
+              <div className="record">{theirChallenge.argument}</div>
+              <div className="muted small" style={{ marginTop: 6 }}>Признание противоречия — достойный ход: оно и решает вызов.</div>
+              <div className="btn-row" style={{ marginTop: 8 }}>
+                <Button primary={concede === true} onClick={() => setConcede(true)}>Признать</Button>
+                <Button primary={concede === false} onClick={() => setConcede(false)}>Отклонить</Button>
+              </div>
+            </Section>
+          )}
+
+          {!anyChallenge && (
+            <Section>
+              <Label>Кто убедил</Label>
+              <div className="btn-row">
+                <Button primary={winner === me} onClick={() => setWinner(me)}>Убедили мы</Button>
+                <Button primary={winner === opp} onClick={() => setWinner(opp)}>Убедил соперник</Button>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <Button primary={winner === null} onClick={() => setWinner(null)}>Не убедил никто — окно не двинулось</Button>
+              </div>
+            </Section>
+          )}
+          {myChallenge && <Section><div className="muted small">Вы заявили вызов: исход обмена решит ответ соперника на него.</div></Section>}
+
+          <Section>
+            <Button primary disabled={!ready} onClick={submit}>Сдать голос</Button>
+          </Section>
+        </>
+      )}
       <ErrorLine error={error} />
     </>
   );

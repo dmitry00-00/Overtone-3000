@@ -139,3 +139,52 @@ def test_lobby_game_can_be_saved_and_loaded(repo):
     loaded = repo.load(sim.game.id)
     assert loaded.status.value == "lobby" and Team.A in loaded.project_swapped
     assert repo.load("нет-такой") is None
+
+
+def test_duel_with_votes_survives_reloads(repo):
+    """Дуэль: голоса, взаимные отметки и judging в конфиге переживают перезагрузку."""
+    import okno.sim as sim_mod
+    from okno.decks import FixedDealer
+    from okno.engine import Config, Game, Role, Team
+    from okno.sim import T0, all_marks
+
+    g = Game(f"test-{uuid.uuid4()}", Config(judging="mutual"), FixedDealer())
+    g.join("p1", Role.TEAM_A, "Первый")
+    g.join("p2", Role.TEAM_B, "Второй")
+    game = Persisted(repo, g)
+    game.start(T0)
+    game.mark_ready("p1", Team.A, T0)
+    game.mark_ready("p2", Team.B, T0)
+    game.submit_statement("p1", Team.A, "Выступление A", T0)
+    game.submit_statement("p2", Team.B, "Выступление B", T0)
+    game.submit_response("p1", Team.A, "Реплика", T0)
+    game.submit_response("p2", Team.B, "Реплика", T0)
+    game.submit_vote("p1", Team.A, Team.A, all_marks(False), T0)
+    game.submit_vote("p2", Team.B, Team.A, all_marks(), T0)
+    game.submit_claim("p1", Team.A, "Опора A", T0)
+    game.submit_claim("p2", Team.B, "Опора B", T0)
+    assert game.rounds[0].verdict.winner is Team.A
+    assert game.rounds[0].marks[Team.A].judge_id == "peer:team_b"
+    assert game.roundtrips > 10
+
+
+def test_solo_with_ai_seat_survives_reloads(repo):
+    from okno.decks import FixedDealer
+    from okno.engine import Config, Game, Role, Team
+    from okno.sim import T0, all_marks
+
+    g = Game(f"test-{uuid.uuid4()}", Config(judging="self"), FixedDealer())
+    g.join("solo1", Role.TEAM_A, "Соло")
+    g.seat_ai(Team.B)
+    game = Persisted(repo, g)
+    game.start(T0)
+    game.mark_ready("solo1", Team.A, T0)
+    game.mark_ready("ai:team_b", Team.B, T0)
+    game.submit_statement("solo1", Team.A, "Выступление", T0)
+    game.submit_statement("ai:team_b", Team.B, "Выступление ИИ", T0)
+    game.submit_response("solo1", Team.A, "Реплика", T0)
+    game.submit_response("ai:team_b", Team.B, "Реплика ИИ", T0)
+    game.rule("solo1", T0, Team.A, {Team.A: all_marks(), Team.B: all_marks(False)})
+    loaded = repo.load(game.game.id if hasattr(game, "game") else game._game.id)
+    assert loaded.players["ai:team_b"].is_ai
+    assert loaded.config.judging == "self"

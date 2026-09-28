@@ -15,6 +15,7 @@ interface TgWebApp {
   enableClosingConfirmation?(): void;
   disableClosingConfirmation?(): void;
   disableVerticalSwipes?(): void;
+  openTelegramLink?(url: string): void;
 }
 
 declare global { interface Window { Telegram?: { WebApp: TgWebApp } } }
@@ -53,6 +54,14 @@ export function applyTheme(): void {
 /** Несохранённый черновик: Telegram спрашивает подтверждение перед закрытием Mini App. */
 export function guardDraft(active: boolean): void {
   try { active ? tg?.enableClosingConfirmation?.() : tg?.disableClosingConfirmation?.(); } catch { /* старый клиент */ }
+}
+
+/** Открыть t.me-ссылку: внутри Telegram — нативно, иначе новой вкладкой. */
+export function openTgLink(url: string): void {
+  try {
+    if (tg?.openTelegramLink) { tg.openTelegramLink(url); return; }
+  } catch { /* старый клиент */ }
+  window.open(url, "_blank");
 }
 
 export function initTelegram(): void {

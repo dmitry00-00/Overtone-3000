@@ -22,7 +22,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 export const api = {
   me: () => call<Me>("GET", "/api/me"),
   game: (id: string) => call<GameView>("GET", `/api/games/${id}`),
-  create: (role: string, rounds?: number, round_hours?: number) => call<GameView>("POST", "/api/games", { role, rounds, round_hours }),
+  create: (role: string, mode: string = "group", rounds?: number, round_hours?: number) => call<GameView>("POST", "/api/games", { role, mode, rounds, round_hours }),
   join: (id: string, role: string) => call<GameView>("POST", `/api/games/${id}/join`, { role }),
   start: (id: string) => call<GameView>("POST", `/api/games/${id}/start`),
   swap: (id: string) => call<GameView>("POST", `/api/games/${id}/swap-project`),
@@ -34,6 +34,7 @@ export const api = {
   move: (id: string, move: string) => call<GameView>("POST", `/api/games/${id}/move`, { move }),
   retract: (id: string, number: number) => call<GameView>("POST", `/api/games/${id}/retract`, { number }),
   rule: (id: string, payload: unknown) => call<GameView>("POST", `/api/games/${id}/rule`, payload),
+  vote: (id: string, payload: unknown) => call<GameView>("POST", `/api/games/${id}/vote`, payload),
   rejectClaim: (id: string, team: string) => call<GameView>("POST", `/api/games/${id}/reject-claim`, { team }),
   summary: (id: string, headline: string, body: string) => call<GameView>("POST", `/api/games/${id}/summary`, { headline, body }),
   debriefNote: (id: string, atom_worked: string, atom_missed: string) => call<GameView>("POST", `/api/games/${id}/debrief-note`, { atom_worked, atom_missed }),

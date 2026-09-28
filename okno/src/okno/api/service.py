@@ -9,17 +9,18 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Callable
 
 import psycopg
 from psycopg_pool import ConnectionPool
 
+from ..ai.opponent import LLMBrain, TemplateBrain, make_brain
 from ..db.repo import Repository
 from ..decks import DeckDealer, Decks
 from ..engine.game import Game
-from ..engine.types import Config, GameStatus, IllegalAction, Role
+from ..engine.types import Config, GameStatus, IllegalAction, Phase, Role, Team
 from .auth import Identity
 
 
@@ -44,9 +45,10 @@ class _Marker:
 
 
 class GameService:
-    def __init__(self, pool: ConnectionPool, decks: Decks):
+    def __init__(self, pool: ConnectionPool, decks: Decks, brain: TemplateBrain | LLMBrain | None = None):
         self.pool = pool
         self.decks = decks
+        self.brain = brain or TemplateBrain(decks)
 
     # ----- чтение -----
 
@@ -86,10 +88,21 @@ class GameService:
                 (ident.player_id, ident.tg_id, ident.display_name),
             )
 
-    def create(self, ident: Identity, role: Role, config: Config | None = None) -> Game:
+    def create(self, ident: Identity, role: Role, config: Config | None = None, mode: str = "group") -> Game:
+        """Режимы: group — классика с судьёй; solo — самосуд против ИИ (друг может
+        присоединиться в ту же команду); duel — дуэль вдвоём со взаимным вердиктом."""
         self.ensure_player(ident)
-        game = Game(id=uuid.uuid4().hex[:12], config=config or Config(), dealer=DeckDealer(self.decks))
+        cfg = config or Config()
+        if mode == "solo":
+            cfg = replace(cfg, judging="self")
+            role = role if role.team is not None else Role.TEAM_A
+        elif mode == "duel":
+            cfg = replace(cfg, judging="mutual")
+            role = role if role.team is not None else Role.TEAM_A
+        game = Game(id=uuid.uuid4().hex[:12], config=cfg, dealer=DeckDealer(self.decks))
         game.join(ident.player_id, role, ident.display_name)
+        if mode == "solo":
+            game.seat_ai(role.team.other)
         game.draw_projects()  # карты проектов видны в лобби: до старта возможен один обмен
         with self.pool.connection() as conn:
             Repository(conn, self.decks).save(game)
@@ -128,8 +141,62 @@ class GameService:
         ticked = []
         for (gid,) in rows:
             self.mutate(gid, lambda g, t: g.tick(t), now)
+            self.play_ai(gid)
             ticked.append(gid)
         return ticked
+
+    # ----- ходы ИИ-соперника -----
+
+    def ai_pending(self, game: Game) -> Team | None:
+        """Какая ИИ-команда должна ходить сейчас."""
+        if game.status is not GameStatus.IN_PROGRESS:
+            return None
+        ai_teams = {p.role.team for p in game.players.values() if p.is_ai and p.active}
+        pending = game.round.pending(game._ctx())
+        for team in ai_teams:
+            if team and (team.value in pending or f"{team.value}:move" in pending):
+                return team
+        return None
+
+    def play_ai(self, game_id: str) -> Game | None:
+        """Доиграть ходы ИИ-соперника. Тексты генерируются вне транзакции (LLM медленный),
+        применение — обычный mutate. Возвращает обновлённую партию, если ИИ ходил."""
+        result: Game | None = None
+        for _ in range(12):  # предохранитель от зацикливания
+            game = None
+            try:
+                game = self.load(game_id)
+            except NotFound:
+                return result
+            team = self.ai_pending(game)
+            if team is None:
+                return result
+            pid = f"ai:{team.value}"
+            rnd = game.round
+            try:
+                match rnd.phase:
+                    case Phase.PREP:
+                        result = self.mutate(game_id, lambda g, t: g.mark_ready(pid, team, t))
+                    case Phase.STATEMENT:
+                        body = self.brain.statement(game, rnd, team)
+                        result = self.mutate(game_id, lambda g, t: g.submit_statement(pid, team, body, t))
+                    case Phase.RESPONSE:
+                        body = self.brain.response(game, rnd, team)
+                        result = self.mutate(game_id, lambda g, t: g.submit_response(pid, team, body, t))
+                    case Phase.LEDGER:
+                        pending = rnd.pending(game._ctx())
+                        if f"{team.value}:move" in pending:
+                            move = game.track.default_move(team)
+                            result = self.mutate(game_id, lambda g, t: g.choose_move(pid, team, move, t))
+                        else:
+                            text = self.brain.claim(game, rnd, team)
+                            result = self.mutate(game_id, lambda g, t: g.submit_claim(pid, team, text, t))
+                    case _:
+                        return result
+            except IllegalAction:
+                # состояние ушло между load и mutate — перечитаем на следующей итерации
+                continue
+        return result
 
     # ----- уведомления -----
 

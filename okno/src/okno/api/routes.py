@@ -35,6 +35,7 @@ def _run(svc: GameService, game_id: str, ident: Identity, fn) -> dict[str, Any]:
         raise HTTPException(404, "партии нет") from None
     except IllegalAction as e:
         raise HTTPException(409, str(e)) from None
+    game = svc.play_ai(game_id) or game  # ИИ-соперник отвечает сразу, не дожидаясь таймаутов
     return game_view(game, ident.player_id, svc.decks)
 
 
@@ -48,9 +49,14 @@ def health():
 
 
 @router.get("/me")
-def me(ident: Identity = Depends(current_identity), svc: GameService = Depends(service)):
+def me(request: Request, ident: Identity = Depends(current_identity), svc: GameService = Depends(service)):
     svc.ensure_player(ident)
-    return {"player_id": ident.player_id, "display_name": ident.display_name, "games": svc.games_of(ident.player_id)}
+    return {
+        "player_id": ident.player_id,
+        "display_name": ident.display_name,
+        "bot_username": request.app.state.settings.bot_username,
+        "games": svc.games_of(ident.player_id),
+    }
 
 
 @router.get("/decks")
@@ -70,6 +76,7 @@ def decks(svc: GameService = Depends(service)):
 
 class CreateGame(BaseModel):
     role: Role = Role.TEAM_A
+    mode: Literal["group", "solo", "duel"] = "group"
     rounds: int | None = Field(default=None, ge=1, le=14)
     round_hours: float | None = Field(default=None, gt=0)
 
@@ -89,7 +96,7 @@ def create_game(body: CreateGame, ident: Identity = Depends(current_identity), s
         kwargs["rounds"] = body.rounds
     if body.round_hours:
         kwargs["round_duration"] = timedelta(hours=body.round_hours)
-    game = svc.create(ident, body.role, Config(**kwargs))
+    game = svc.create(ident, body.role, Config(**kwargs), mode=body.mode)
     return game_view(game, ident.player_id, svc.decks)
 
 
@@ -184,6 +191,21 @@ def move(game_id: str, body: MoveIn, ident: Identity = Depends(current_identity)
 @router.post("/games/{game_id}/retract")
 def retract(game_id: str, body: Retract, ident: Identity = Depends(current_identity), svc: GameService = Depends(service)):
     return _run(svc, game_id, ident, lambda g, now: g.retract_claim(ident.player_id, _team_of(g, ident), body.number, now))
+
+
+class VoteIn(BaseModel):
+    winner: Team | None = None
+    opponent_marks: dict[MarkCode, bool]
+    challenge_concede: bool | None = None
+
+
+@router.post("/games/{game_id}/vote")
+def vote(game_id: str, body: VoteIn, ident: Identity = Depends(current_identity), svc: GameService = Depends(service)):
+    """Взаимный вердикт дуэли: голос команды с отметками карточки соперника."""
+    return _run(
+        svc, game_id, ident,
+        lambda g, now: g.submit_vote(ident.player_id, _team_of(g, ident), body.winner, body.opponent_marks, now, body.challenge_concede),
+    )
 
 
 # ----------------------------------------------------------------- судья и журналист

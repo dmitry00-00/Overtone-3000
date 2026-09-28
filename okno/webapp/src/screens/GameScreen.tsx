@@ -4,14 +4,18 @@ import { Track } from "../components/Track";
 import { TEAM_LABEL, type Team } from "../types";
 
 /** Куда ведёт главная кнопка и что на ней написано — по prompt.kind. */
-function mainAction(kind: string): { screen: Screen; text: string } | null {
+function mainAction(kind: string, judging: string): { screen: Screen; text: string } | null {
   switch (kind) {
     case "prep": return { screen: "round", text: "Подготовка и готовность" };
     case "statement": return { screen: "round", text: "Написать выступление" };
     case "response": return { screen: "round", text: "Реплика или вызов" };
     case "ledger": return { screen: "round", text: "Записать опору" };
     case "move": return { screen: "round", text: "Выбрать ход" };
-    case "verdict": return { screen: "judge", text: "Открыть карточку судьи" };
+    case "verdict":
+      return {
+        screen: "judge",
+        text: judging === "mutual" ? "Вынести взаимный вердикт" : judging === "self" ? "Судить обмен" : "Открыть карточку судьи",
+      };
     case "summary": return { screen: "summary", text: "Написать сводку" };
     case "debrief": return { screen: "debrief", text: "Перейти к разбору" };
     default: return null;
@@ -22,7 +26,7 @@ export function GameScreen({ ctx }: { ctx: Ctx }) {
   const { view, go, error } = ctx;
   const me = view.me.team;
   const r = view.round;
-  const action = mainAction(view.prompt.kind);
+  const action = mainAction(view.prompt.kind, view.game.judging);
   const lastChanged = view.track.events.length ? view.track.events[view.track.events.length - 1] : null;
   const myProject = me ? view.projects[me] : null;
   const closed = view.rounds;

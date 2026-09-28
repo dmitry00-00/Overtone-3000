@@ -40,6 +40,7 @@ from ..engine.types import (
     TrackCause,
     TrackEvent,
     Verdict,
+    VerdictVote,
 )
 
 # ------------------------------------------------------------------ конфиг ↔ json
@@ -53,6 +54,7 @@ def config_to_json(cfg: Config) -> dict:
         "debrief_window_s": cfg.debrief_window.total_seconds(),
         "end_on_norm": cfg.end_on_norm,
         "scoring": cfg.scoring,
+        "judging": cfg.judging,
         "claim_max_words": cfg.claim_max_words,
         "track_size": cfg.track_size,
     }
@@ -66,6 +68,7 @@ def config_from_json(d: dict) -> Config:
         debrief_window=timedelta(seconds=d["debrief_window_s"]),
         end_on_norm=d["end_on_norm"],
         scoring=d["scoring"],
+        judging=d.get("judging", "judge"),
         claim_max_words=d["claim_max_words"],
         track_size=d["track_size"],
     )
@@ -224,6 +227,18 @@ class Repository:
                 on conflict (round_id, team) do update set upheld = excluded.upheld, ruled_at = excluded.ruled_at
                 """,
                 (rid, team.value, list(ch.claim_numbers), ch.argument, ch.submitted_at, ch.upheld, ch.ruled_at),
+            )
+        for team, vote in r.votes.items():
+            self.conn.execute(
+                """
+                insert into verdict_votes (round_id, team, winner_team, opponent_marks, challenge_concede, submitted_at)
+                values (%s, %s, %s, %s, %s, %s) on conflict (round_id, team) do nothing
+                """,
+                (
+                    rid, team.value, vote.winner.value if vote.winner else None,
+                    json.dumps({c.value: v for c, v in vote.opponent_marks.items()}),
+                    vote.challenge_concede, vote.submitted_at,
+                ),
             )
         if r.verdict is not None:
             v = r.verdict
@@ -412,6 +427,12 @@ class Repository:
             r.responses[Team(s["team"])] = Response(Team(s["team"]), s["body"], s["submitted_at"])
         for c in self._rows("select * from challenges where round_id = %s", rid):
             r.challenges[Team(c["team"])] = Challenge(Team(c["team"]), tuple(c["claim_numbers"]), c["argument"], c["submitted_at"], c["upheld"], c["ruled_at"])
+        for vt in self._rows("select * from verdict_votes where round_id = %s order by team", rid):
+            r.votes[Team(vt["team"])] = VerdictVote(
+                Team(vt["team"]), _team(vt["winner_team"]),
+                {MarkCode(c): val for c, val in vt["opponent_marks"].items()},
+                vt["submitted_at"], vt["challenge_concede"],
+            )
         v = self._one("select * from verdicts where round_id = %s", rid)
         if v:
             r.verdict = Verdict(

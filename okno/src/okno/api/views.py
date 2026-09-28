@@ -80,9 +80,19 @@ def prompt_for(game: Game, me: Player | None) -> dict[str, Any]:
                 return {"kind": "response", "text": "Реплика — или вызов на противоречие вместо неё", "deadline": deadline}
             return waiting("Ждём реплику соперника" if team else "Команды отвечают")
         case Phase.VERDICT:
-            if me.role is Role.JUDGE:
-                return {"kind": "verdict", "text": "Вынесите вердикт и отметьте пять пунктов каждой команде", "deadline": deadline}
-            return waiting("Ждём вердикт судьи")
+            match game.config.judging:
+                case "self":
+                    if team:
+                        return {"kind": "verdict", "text": "Самосуд: решите честно, кто убедил, и отметьте обе карточки", "deadline": deadline}
+                    return waiting("Команда судит свой обмен")
+                case "mutual":
+                    if team and tv in pending:
+                        return {"kind": "verdict", "text": "Взаимный вердикт: кто убедил — и пять отметок сопернику", "deadline": deadline}
+                    return waiting("Ждём вердикт соперника" if team else "Команды выносят взаимный вердикт")
+                case _:
+                    if me.role is Role.JUDGE:
+                        return {"kind": "verdict", "text": "Вынесите вердикт и отметьте пять пунктов каждой команде", "deadline": deadline}
+                    return waiting("Ждём вердикт судьи")
         case Phase.LEDGER:
             if team:
                 needs_claim = tv in pending
@@ -136,6 +146,17 @@ def round_view(game: Game, rnd: Round, me: Player | None, decks: Decks) -> dict[
             for t, c in rnd.challenges.items()
         }
 
+    votes: dict[str, Any] = {}
+    if my_team is not None and my_team in rnd.votes:
+        v = rnd.votes[my_team]
+        votes["mine"] = {
+            "winner": v.winner.value if v.winner else None,
+            "opponent_marks": {c.value: val for c, val in v.opponent_marks.items()},
+            "challenge_concede": v.challenge_concede,
+        }
+    if my_team is not None:
+        votes["opponent_submitted"] = my_team.other in rnd.votes
+
     verdict = None
     if rnd.verdict is not None:
         v = rnd.verdict
@@ -155,7 +176,9 @@ def round_view(game: Game, rnd: Round, me: Player | None, decks: Decks) -> dict[
             claim_drafts[team.value] = text
 
     hands = {t.value: {"carrier": _card(decks.carriers, c), "frame": _card(decks.frames, f)} for t, (c, f) in rnd.deal.hands.items()}
-    audience = _card(decks.audiences, rnd.deal.audience_code) if (is_judge or is_press or closed) else None
+    # Публика — линза судейства. Без судьи (соло, дуэль) судят команды — им она и видна.
+    judges_themselves = game.config.judging != "judge" and my_team is not None
+    audience = _card(decks.audiences, rnd.deal.audience_code) if (is_judge or is_press or closed or judges_themselves) else None
 
     return {
         "index": rnd.index,
@@ -175,6 +198,7 @@ def round_view(game: Game, rnd: Round, me: Player | None, decks: Decks) -> dict[
         "verdict": verdict,
         "marks": marks,
         "claim_drafts": claim_drafts,
+        "votes": votes,
         "claim_rejections": {t.value: n for t, n in rnd.claim_rejections.items()},
         "move_choice": rnd.move_choice.value if rnd.move_choice else None,
         "summary": asdict(rnd.summary) | {"published_at": _iso(rnd.summary.published_at)} if rnd.summary else None,
@@ -215,6 +239,7 @@ def game_view(game: Game, player_id: str, decks: Decks) -> dict[str, Any]:
             "id": game.id,
             "status": game.status.value,
             "created_at": _iso(game.created_at),
+            "judging": game.config.judging,
             "rounds_total": game.config.rounds,
             "rounds_played": len(game.rounds),
             "technical_aporia_from": game.technical_aporia_from,
@@ -232,7 +257,7 @@ def game_view(game: Game, player_id: str, decks: Decks) -> dict[str, Any]:
         },
         "me": {"player_id": player_id, "role": me.role.value if me else None, "team": my_team.value if my_team else None, "display_name": me.display_name if me else None},
         "players": [
-            {"id": p.id, "display_name": p.display_name, "role": p.role.value, "team": p.role.team.value if p.role.team else None, "active": p.active}
+            {"id": p.id, "display_name": p.display_name, "role": p.role.value, "team": p.role.team.value if p.role.team else None, "active": p.active, "is_ai": p.is_ai}
             for p in game.players.values()
         ],
         "projects": {
@@ -262,7 +287,7 @@ def game_view(game: Game, player_id: str, decks: Decks) -> dict[str, Any]:
                 "deadline": _iso(game.debrief_deadline),
                 "completed_at": _iso(game.debrief_completed_at),
                 "notes_from": sorted(game.debrief_notes),
-                "waiting_for": sorted(p.id for p in game.active_players() if p.id not in game.debrief_notes),
+                "waiting_for": sorted(p.id for p in game.active_players() if not p.is_ai and p.id not in game.debrief_notes),
                 "track_replay": [
                     {"round_index": e.round_index, "team": e.team.value, "from": e.position_from, "to": e.position_to, "cause": e.cause.value, "statement": body}
                     for e, body in game.track_replay()

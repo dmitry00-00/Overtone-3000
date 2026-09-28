@@ -50,7 +50,9 @@ def create_app(settings: Settings | None = None, run_scheduler: bool = True) -> 
         with pool.connection() as conn:
             Repository(conn, decks).import_decks()
         app.state.settings = settings
-        app.state.service = GameService(pool, decks)
+        from ..ai.opponent import make_brain
+
+        app.state.service = GameService(pool, decks, make_brain(decks, settings.llm_url, settings.llm_model))
         stop = asyncio.Event()
         tasks = []
         if run_scheduler:

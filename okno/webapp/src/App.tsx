@@ -17,6 +17,7 @@ export type Screen = "home" | "game" | "round" | "ledger" | "challenge" | "judge
 
 export interface Ctx {
   view: GameView;
+  botUsername: string | null;
   refresh: () => Promise<void>;
   /** Выполнить действие; ответ сервера становится новым состоянием. */
   act: (fn: () => Promise<GameView>) => Promise<boolean>;
@@ -89,7 +90,7 @@ export default function App() {
   }
   if (!view) return <div className="page"><div className="topbar"><span className="brand">Окно</span><span className="meta">загрузка</span></div></div>;
 
-  const ctx: Ctx = { view, refresh, act, error, go, back };
+  const ctx: Ctx = { view, botUsername: me?.bot_username ?? null, refresh, act, error, go, back };
   const header = (
     <div className="topbar">
       <span className="brand">Окно</span>

@@ -152,6 +152,9 @@ export function RoundScreen({ ctx }: { ctx: Ctx }) {
 
     case "ledger": {
       const v = r.verdict!;
+      const judging = view.game.judging;
+      const who = judging === "mutual" ? "Взаимный вердикт" : judging === "self" ? "Ваш вердикт" : "Судья";
+      const markedBy = judging === "mutual" ? "Соперник" : judging === "self" ? "Вы" : "Судья";
       const marks = r.marks[me];
       const needClaim = iAct && r.statements[me];
       const needMove = view.legal_moves.length > 0 && !r.move_choice;
@@ -161,10 +164,14 @@ export function RoundScreen({ ctx }: { ctx: Ctx }) {
           <Section>
             <Label>Вердикт раунда</Label>
             <div className="h2">
-              {v.is_aporia ? (v.aporia_reason === "no_verdict" ? "Судья не вынес вердикт — окно не двинулось" : "Не убедил никто — окно не двинулось")
-                : v.winner === me ? "Судья: убедили вы" + (v.by_forfeit ? " — соперник не выступил" : "") : "Судья: убедил соперник" + (v.by_forfeit ? " — выступление не было сдано" : "")}
+              {v.is_aporia
+                ? v.aporia_reason === "no_consensus" ? "Вердикты разошлись — окно не двинулось"
+                  : v.aporia_reason === "no_verdict" ? "Вердикт не вынесен в срок — окно не двинулось"
+                  : "Не убедил никто — окно не двинулось"
+                : v.winner === null ? "Исход решил вызов"
+                : `${who}: убедил${v.winner === me ? "и вы" : " соперник"}` + (v.by_forfeit ? (v.winner === me ? " — соперник не выступил" : " — выступление не было сдано") : "")}
             </div>
-            {marks && <div className="muted small">Судья отметил: {MARKS.filter((m) => marks[m]).map((m) => MARK_LABEL[m]).join(", ") || "—"}</div>}
+            {marks && <div className="muted small">{markedBy} отметил: {MARKS.filter((m) => marks[m]).map((m) => MARK_LABEL[m]).join(", ") || "—"}</div>}
             {Object.entries(r.challenges).map(([t, ch]) => (
               <div key={t} className="muted small">Вызов {t === me ? "ваш" : "соперника"}: {ch!.upheld === null ? "не рассмотрен" : ch!.upheld ? "засчитан" : "отклонён"}.</div>
             ))}
