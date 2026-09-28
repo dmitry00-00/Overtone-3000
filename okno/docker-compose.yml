@@ -1,0 +1,34 @@
+# Для VPS: приложение + Postgres. На PaaS-хостинге обычно нужен только Dockerfile,
+# а базу и переменные даёт платформа.
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8010:8010"
+    environment:
+      OKNO_DSN: postgresql://okno:okno@db/okno
+      OKNO_BOT_TOKEN: ${OKNO_BOT_TOKEN}
+      OKNO_WEBAPP_URL: ${OKNO_WEBAPP_URL}
+      OKNO_APP_SHORT_NAME: ${OKNO_APP_SHORT_NAME:-}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: okno
+      POSTGRES_PASSWORD: okno
+      POSTGRES_DB: okno
+    volumes:
+      - okno-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U okno"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  okno-db:

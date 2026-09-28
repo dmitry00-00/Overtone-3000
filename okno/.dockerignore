@@ -1,0 +1,9 @@
+.venv/
+webapp/node_modules/
+webapp/src/
+.pytest_cache/
+__pycache__/
+*.pyc
+.env
+tests/
+scripts/

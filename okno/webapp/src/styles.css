@@ -1,0 +1,134 @@
+/* «Окно» — направление А «Протокол». Токены из макета; радиусы — нули, теней нет. */
+
+:root {
+  --ok-surface-0: #0f0f0f;
+  --ok-surface-1: #1a1a1a;
+  --ok-surface-2: #242424;
+  --ok-ink: #efece4;
+  --ok-ink-muted: #a8a49c;
+  --ok-ink-faint: #6f6c66;
+  --ok-line: #2a2a2a;
+  --ok-line-strong: #4a4c52;
+  --ok-accent: #d95c3f;
+  --ok-accent-ink: #e8735a;
+  --ok-accent-wash: #2b1712;
+  --ok-on-accent: #fff5f0;
+  --ok-focus: #efece4;
+  --ok-hatch: repeating-linear-gradient(135deg, var(--ok-ink-muted) 0 1.5px, transparent 1.5px 4.5px);
+
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --sans: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+  --gutter: 20px;
+}
+
+:root[data-theme="light"] {
+  --ok-surface-0: #f3f1ec;
+  --ok-surface-1: #ffffff;
+  --ok-surface-2: #e9e6df;
+  --ok-ink: #1a1a1a;
+  --ok-ink-muted: #5b5954;
+  --ok-ink-faint: #8a8781;
+  --ok-line: #e0ddd6;
+  --ok-line-strong: #8a8781;
+  --ok-accent: #c9482c;
+  --ok-accent-ink: #b53d23;
+  --ok-accent-wash: #f6e4de;
+  --ok-on-accent: #fff5f0;
+  --ok-focus: #1a1a1a;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--ok-surface-0); color: var(--ok-ink); overscroll-behavior: none; }
+body {
+  font-family: var(--sans); font-size: 13px; line-height: 1.35;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea { font: inherit; color: inherit; }
+a { color: var(--ok-accent-ink); }
+textarea { width: 100%; resize: vertical; background: var(--ok-surface-2); border: 1px solid var(--ok-line); padding: 10px 12px; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; min-height: 140px; }
+textarea:focus, button:focus-visible, input:focus { outline: 2px solid var(--ok-focus); outline-offset: 2px; }
+input[type="text"] { width: 100%; background: var(--ok-surface-2); border: 1px solid var(--ok-line); padding: 10px 12px; }
+
+/* --- сетка страницы --- */
+.page { padding: 12px var(--gutter) 28px; max-width: 560px; margin: 0 auto; }
+.topbar { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0 10px; }
+.brand { font-family: var(--mono); font-weight: 600; font-size: 13px; letter-spacing: 0.22em; text-transform: uppercase; }
+.meta { font-family: var(--mono); font-size: 11px; color: var(--ok-ink-faint); letter-spacing: 0.04em; }
+
+/* --- типографика --- */
+.label { font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ok-ink-faint); }
+.label.accent { color: var(--ok-accent-ink); }
+.h1 { font-weight: 600; font-size: 19px; line-height: 1.2; margin: 2px 0 4px; }
+.h2 { font-weight: 500; font-size: 15px; line-height: 1.28; margin: 2px 0 2px; }
+.muted { color: var(--ok-ink-muted); }
+.faint { color: var(--ok-ink-faint); }
+.record { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; }
+.small { font-size: 12px; }
+
+/* --- блоки --- */
+.panel { background: var(--ok-surface-1); padding: 12px 14px; margin: 0 0 12px; }
+.panel.accent-rule { border-left: 3px solid var(--ok-accent); }
+.section { padding: 12px 0; border-top: 1px solid var(--ok-line); }
+.section:first-child { border-top: 0; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.stack > * + * { margin-top: 10px; }
+.sunken { background: var(--ok-surface-2); padding: 10px 12px; }
+
+/* --- кнопки --- */
+.btn { display: block; width: 100%; min-height: 44px; padding: 10px 14px; border: 1px solid var(--ok-line-strong); background: transparent; cursor: pointer; text-align: center; font-weight: 500; }
+.btn.primary { background: var(--ok-accent); border-color: var(--ok-accent); color: var(--ok-on-accent); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.inline { display: inline-block; width: auto; }
+.btn-row { display: flex; gap: 8px; }
+.btn-row .btn { flex: 1; }
+.linkish { background: none; border: 0; padding: 0; color: var(--ok-accent-ink); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+
+/* --- трек --- */
+.track { border-top: 1px solid var(--ok-line); }
+.track-row { display: grid; grid-template-columns: 28px 1fr 40px 40px; align-items: center; height: 44px; border-bottom: 1px solid var(--ok-line); padding-left: 8px; }
+.track-row.changed { background: var(--ok-surface-1); border-left: 3px solid var(--ok-accent); padding-left: 5px; }
+.track-row .num { font-family: var(--mono); font-size: 11px; color: var(--ok-ink-faint); }
+.track-row .name { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+.track-row .name.current { font-weight: 600; }
+.mark { display: inline-block; width: 16px; height: 16px; justify-self: center; vertical-align: middle; }
+.mark.me { background: var(--ok-ink); }
+.mark.opp { background: var(--ok-hatch); border: 1px solid var(--ok-ink-muted); }
+.mark.start { border: 1px solid var(--ok-ink-muted); }
+.legend { display: flex; gap: 14px; padding: 8px 0 0; font-size: 11px; color: var(--ok-ink-muted); align-items: center; }
+.legend .mark { width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 5px; }
+@media (max-width: 340px) { .track-row .name { display: none; } .track-row { grid-template-columns: 28px 1fr 40px 40px; } }
+
+/* --- чек-лист выступления --- */
+.checklist { list-style: none; margin: 0; padding: 0; }
+.checklist li { display: grid; grid-template-columns: 20px 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--ok-line); font-size: 12px; }
+.checklist .n { font-family: var(--mono); color: var(--ok-ink-faint); }
+
+/* --- карточка судьи --- */
+.marks { list-style: none; margin: 0; padding: 0; }
+.marks li { display: flex; align-items: center; gap: 12px; min-height: 44px; border-bottom: 1px solid var(--ok-line); cursor: pointer; padding: 0 4px; }
+.marks li.on { background: var(--ok-surface-2); }
+.marks .box { width: 18px; height: 18px; border: 1px solid var(--ok-line-strong); flex: none; display: grid; place-items: center; }
+.marks li.on .box { background: var(--ok-accent); border-color: var(--ok-accent); color: var(--ok-on-accent); }
+.tabs { display: flex; border-bottom: 1px solid var(--ok-line-strong); }
+.tabs button { flex: 1; background: none; border: 0; padding: 10px; cursor: pointer; color: var(--ok-ink-muted); border-bottom: 2px solid transparent; }
+.tabs button.active { color: var(--ok-ink); border-bottom-color: var(--ok-accent); }
+
+/* --- реестр --- */
+.ledger { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.ledger h4 { margin: 0 0 6px; }
+.claim { padding: 8px 0; border-bottom: 1px solid var(--ok-line); font-family: var(--mono); font-size: 12px; line-height: 1.45; }
+.claim .num { color: var(--ok-ink-faint); font-size: 10px; letter-spacing: 0.1em; }
+.claim.retracted { color: var(--ok-ink-faint); text-decoration: line-through; }
+.claim.suspect { background: var(--ok-accent-wash); }
+.claim.selected { outline: 1px solid var(--ok-accent); }
+.claim.weak { color: var(--ok-ink-muted); font-style: italic; }
+.tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ok-accent-ink); }
+
+/* --- сводка --- */
+.print { background: var(--ok-surface-1); padding: 16px 14px; }
+.print .headline { font-weight: 600; font-size: 19px; line-height: 1.2; margin: 0 0 8px; }
+.print .lede { font-family: var(--mono); font-size: 12.5px; line-height: 1.55; }
+
+.error { color: var(--ok-accent-ink); font-family: var(--mono); font-size: 12px; padding: 8px 0; }
+.spacer { height: 12px; }
